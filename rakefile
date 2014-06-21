@@ -1,0 +1,8 @@
+task :read do
+  ruby "db/read/read-db.rb"
+end
+
+task :init do
+ ruby "db/init/init-db.rb"
+end
+
