@@ -66,8 +66,37 @@ Editor.prototype = {
   content: function() {
     return this._node.value;
   },
-  updateEditor: function(code) {
+  updateWithText: function(code) {
     this._node.value = code;  
+  },
+  update: function(context, slideShowType) {
+    if (slideShowType == 'blackboard') {
+      lastSendToBlackboard = context.lastSendToBlackboard(slideShowType);
+      if (lastSendToBlackboard.code != '' && lastSendToBlackboard.code != this.content()) { 
+        this.updateWithText(lastSendToBlackboard.code);
+        context._authorBar.updateWith(lastSendToBlackboard.author);
+        return true; 
+      }
+    } else {
+      lastexecution = context.lastExecution(slideShowType);
+      if (lastexecution.code != '' && lastexecution.code != this.content()) { 
+        this.updateWithText(lastexecution.code); 
+        return true; 
+      }
+      if (lastexecution.code_to_add != '' && lastexecution.code == this.content()) {
+        return false;
+      }
+    }
+    codeToDisplay = context._currentCodeHelper().codeToDisplay();
+    if (codeToDisplay != '' && codeToDisplay != this.content()) { 
+      this.updateWithText(codeToDisplay) ; 
+      return true; 
+    }
+    CodeToAdd = context._currentCodeHelper().codeToAdd()
+    if (context._currentCodeHelper().codeToAdd() != '') {
+      return true;
+    }
+    return false;  
   },
 }
 
@@ -239,7 +268,7 @@ CodeSlide.prototype = {
   }, 
 
   updateEditor: function(code) {
-    this._editor.updateEditor(code);
+    this._editor.updateWithText(code);
   },   
   
   codeToExecute: function() {
@@ -251,7 +280,7 @@ CodeSlide.prototype = {
     run_url = "/code_run_result" + "/" + this._codeHelper_current_index;
     if (slideShowType == 'blackboard') { run_url = '/code_run_result_blackboard' + "/" + this._codeHelper_current_index; }    
     this._node.querySelector('#code_output').value = postResource(run_url , this.codeToExecute(), SYNCHRONOUS);
-    this._authorBar.refresh();
+    if (slideShowType != 'blackboard') this._authorBar.refresh();
   },
   
   executeAndSendCode: function() {
@@ -260,48 +289,54 @@ CodeSlide.prototype = {
     this._node.querySelector('#code_output').value = postResource(send_url, this.codeToExecute(), SYNCHRONOUS);   
   },
 
-  getAndExecuteCode: function() {         
-    get_url = "/code_get_last_send_to_blackboard" + "/" + this._codeHelper_current_index;
-    code = getResource(get_url)
-    if (code.split('#|||||#')[1]) {
-      code = code.split('#|||||#')[1].split(SEPARATOR)[0];
-      this.updateEditor(code);
+  getAndExecuteCode: function() {
+    lastRunOnBlackBoard = this.lastRunOnBlackBoard();
+    if (lastRunOnBlackBoard.code != '') {
+      this.updateEditor(lastRunOnBlackBoard.code);
       this.executeCode();
     }
   }, 
+  
+  lastRunOnBlackBoard: function() {
+    get_url = "/code_get_last_send_to_blackboard" + "/" + this._codeHelper_current_index;
+    lastRunOnBlackBoard = getResource(get_url);
+    author = lastRunOnBlackBoard.split('#|||||#')[0];
+    code_and_code_to_add = lastRunOnBlackBoard.split('#|||||#')[1];
+    code = (code_and_code_to_add && code_and_code_to_add.split(SEPARATOR)[0]) ? code_and_code_to_add.split(SEPARATOR)[0] : '';
+    code_to_add = (code_and_code_to_add && code_and_code_to_add.split(SEPARATOR)[1]) ? code_and_code_to_add.split(SEPARATOR)[1] : '';    
+    return { "author": author, "code" : code, "code_to_add" : code_to_add };    
+    return lastRunOnBlackBoard;
+  },
 
   lastExecution: function(slideShowType) {
     url = '/code_last_execution'
-    lastexecution = getResource(url + '/' + this._codeHelper_current_index);
-    if ( lastexecution == '') return;
-    code = lastexecution.split(SEPARATOR)[0];
-    code_to_add = (lastexecution.split(SEPARATOR)[1]) ? lastexecution.split(SEPARATOR)[1] : ''
-    return { "code" : code, "code_to_add" : code_to_add };
-  },  
-  
-  _updateEditorWithLastUserRunAndExecute: function(slideShowType) {
-    lastexecution = this.lastExecution(slideShowType);
-    if (lastexecution) {
-      if (lastexecution.code != this._editor.content()) {
-        this.updateEditor(lastexecution.code);
-        this.executeCode(slideShowType);
-      }
-      return true;
-    }
-  },  
+    last_execution = getResource(url + '/' + this._codeHelper_current_index);
+    author = last_execution.split('#|||||#')[0];
+    code_and_code_to_add = last_execution.split('#|||||#')[1];
+    code = (code_and_code_to_add && code_and_code_to_add.split(SEPARATOR)[0]) ? code_and_code_to_add.split(SEPARATOR)[0] : '';
+    code_to_add = (code_and_code_to_add && code_and_code_to_add.split(SEPARATOR)[1]) ? code_and_code_to_add.split(SEPARATOR)[1] : '';
+    return { "author": author, "code" : code, "code_to_add" : code_to_add };
+  },
 
   attendeesLastSend: function(slideShowType) {
     url = '/code_attendees_last_send'
     attendeeLastSend = getResource(url + '/' + this._codeHelper_current_index);
     author = attendeeLastSend.split('#|||||#')[0];
     code_and_code_to_add = attendeeLastSend.split('#|||||#')[1];
-    code = ''; code_to_add = '';
-    if (code_and_code_to_add) {
-    code = code_and_code_to_add.split(SEPARATOR)[0];
-    code_to_add = code_and_code_to_add.split(SEPARATOR)[1];  
-    } 
+    code = (code_and_code_to_add && code_and_code_to_add.split(SEPARATOR)[0]) ? code_and_code_to_add.split(SEPARATOR)[0] : '';
+    code_to_add = (code_and_code_to_add && code_and_code_to_add.split(SEPARATOR)[1]) ? code_and_code_to_add.split(SEPARATOR)[1] : '';
     return { "author": author, "code": code,"code_to_add": code_to_add }
-  }, 
+  },  
+  
+  lastSendToBlackboard: function(slideShowType) {
+    url = '/code_get_last_send_to_blackboard';
+    lastSendToBlackboard = getResource(url + '/' + this._codeHelper_current_index);
+    author = lastSendToBlackboard.split('#|||||#')[0];
+    code_and_code_to_add = lastSendToBlackboard.split('#|||||#')[1];
+    code = (code_and_code_to_add && code_and_code_to_add.split(SEPARATOR)[0]) ? code_and_code_to_add.split(SEPARATOR)[0] : '';
+    code_to_add = (code_and_code_to_add && code_and_code_to_add.split(SEPARATOR)[1]) ? code_and_code_to_add.split(SEPARATOR)[1] : '';
+    return { "author": author, "code": code,"code_to_add": code_to_add }
+  },
 
   _updateEditorWithLastSendAndExecute: function(slideShowType) {
       attendeeLastSend = this.attendeesLastSend(slideShowType);
@@ -312,59 +347,11 @@ CodeSlide.prototype = {
         return true;
       };
   },
-
-  _updateEditorWithCodeToDisplayAndExecute: function(slideShowType) {
-    codeToDisplay = this._currentCodeHelper().codeToDisplay(); 
-    if (codeToDisplay != '') { 
-      if (codeToDisplay != this._editor.content()) { 
-        this.updateEditor(codeToDisplay); 
-        this.executeCode(slideShowType);
-        };
-      return true;
-    };
-  },
-  
-  _updateEditorWithCodeToAddAndExecute: function(slideShowType) {
-    codeToAdd = this._currentCodeHelper().codeToAdd();
-    if (codeToAdd != '') {
-      this.updateEditor(''); 
-      this.executeCode(slideShowType);
-      return  true;
-    }
-  },
-  
-  lastSendToBlackboard: function(slideShowType) {
-    url = '/code_get_last_send_to_blackboard';
-    lastSendToBlackboard = getResource(url + '/' + this._codeHelper_current_index);
-    author = lastSendToBlackboard.split('#|||||#')[0];
-    code_and_code_to_add = lastSendToBlackboard.split('#|||||#')[1];
-    code = ''; code_to_add = '';
-    if (code_and_code_to_add) {
-        code = code_and_code_to_add.split(SEPARATOR)[0];
-    }
-    return { "author": author, "code": code,"code_to_add": code_to_add }
-  },    
-  
-  _updateEditorWithLastSendToBlackboardAndExecute: function(slideShowType) {
-    lastSendToBlackboard = this.lastSendToBlackboard(slideShowType);
-    if (lastSendToBlackboard.code != '') {
-      if (lastSendToBlackboard.code != this._editor.content()) {
-        this.updateEditor(lastSendToBlackboard.code);        
-        this.executeCode(slideShowType);
-        this._authorBar.updateWith(lastSendToBlackboard.author);        
-      };
-      return true;
-    };
-  },  
   
   _updateEditorAndExecuteCode: function(slideShowType) {
-    if (slideShowType == 'blackboard') {
-      if (this._updateEditorWithLastSendToBlackboardAndExecute(slideShowType)) return;
-    } else {
-      if (this._updateEditorWithLastUserRunAndExecute(slideShowType) ) return;
-    }
-    if (this._updateEditorWithCodeToDisplayAndExecute(slideShowType)) return;
-    if (this._updateEditorWithCodeToAddAndExecute(slideShowType)) return;
+    if (this._editor.update(this, slideShowType)) {
+      this.executeCode(slideShowType);
+    };
   },
   
   _updateLastSendAttendeeName: function(slide_index, slideShowType) {
