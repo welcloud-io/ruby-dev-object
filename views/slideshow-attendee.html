@@ -1262,6 +1262,12 @@ class Subject
   def initialize(subject_string, dictionary)
     @subject_string = subject_string
     @dictionary = dictionary
+    @words = subject_string.split.map do |word_string|
+        case
+        when @dictionary.article?(word_string) then Article.new(word_string, self, @dictionary)
+        when @dictionary.pronoun?(word_string) then Pronoun.new(word_string, self, @dictionary)
+        end
+    end     
   end
   
   def article
@@ -1279,7 +1285,7 @@ class Subject
   end
   
   def corrected
-    return article.corrected + " " + noun.corrected if article
+    return article.corrected + " " + noun.corrected if article and noun
     return pronoun.corrected if pronoun
   end
 end
