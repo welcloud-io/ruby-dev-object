@@ -51,6 +51,10 @@ span.help_symbol {
 color: darkturquoise;
 background-color: black;
 }
+span.help_property {
+color: orange;
+background-color: black;
+}
 }
 
 EDITOR_CONFIG = 
@@ -86,7 +90,6 @@ CONNEXION_SLIDE = "
 DICTIONARY =
 %Q{
 class Dictionary
-  
   attr_accessor :verb, :articles, :nouns, :adjectives
   
   def initialize(verb, adjectives, nouns)
@@ -109,14 +112,14 @@ class Dictionary
   
   def formated_verb(verb)
     @verb = @verb || {
-      'je' => verb[0],
-      'tu' => verb[1],
-      'il' => verb[2],
-      'elle' => verb[2],
-      'nous' => verb[3],
-      'vous' => verb[4],
-      'ils' => verb[5],
-      'elles' => verb[5]
+    'je' => verb[0],
+    'tu' => verb[1],
+    'il' => verb[2],
+    'elle' => verb[2],
+    'nous' => verb[3],
+    'vous' => verb[4],
+    'ils' => verb[5],
+    'elles' => verb[5]
     }
   end
   
@@ -126,12 +129,12 @@ class Dictionary
     adjectives.each do |adjective|
       (0..3).each do |index|
         @adjectives[adjective[index]] = { 
-          :masculin => { 
-            :singular => adjective[0], 
-            :plural => adjective[1]}, 
-          :feminin => { 
-            :singular => adjective[2], 
-            :plural => adjective[3]} 
+        :masculine => { 
+          :singular => adjective[0], 
+          :plural => adjective[1]}, 
+        :feminine => { 
+          :singular => adjective[2], 
+          :plural => adjective[3]} 
         }
       end
     end
@@ -173,62 +176,68 @@ class Dictionary
   def article?(word)
     @articles.keys.include?(word)
   end
-  
 end
 }
 
-SOLUTION_SUBJECT_VERB_COMPLEMENT =
+DICTIONARY_EXAMPLE =
+%Q{
+dictionary = Dictionary.new(
+  ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent'],
+  [ ['petit', 'petits', 'petite', 'petites'] ],
+  [ [:feminine, 'coccinelle', 'coccinelles'], [:feminine, 'orange', 'oranges'] ]
+)
+}
+
+SUBJECT_VERB_COMPLEMENT_SOLUTION =
 %Q{
 class Word
-    
-  def initialize(word_string, context, dictionary)
-    @word_string = word_string
+   def initialize(word_string, context, dictionary)
+    @word_string = word_string 
     @context = context
     @dictionary = dictionary
   end
-  
-  def corrected
-    @word_string
-  end  
-
 end
 
-
 class Verb < Word
-    
   def corrected
-    @dictionary.verb[@context.subject.pronoun]
+    if @context.subject.pronoun then
+        return @dictionary.verb[@context.subject.pronoun.corrected]
+    end
+    if @context.subject.article then
+        return @dictionary.verb[@context.subject.article.pronoun.corrected]        
+    end
   end
-  
 end
 
 class Article < Word
-  
   def number
     @dictionary.articles[@word_string][:number]
   end
   
   def pronoun
-    return "il" if self.number == :singular
-    return "ils" if self.number == :plural    
+    return Pronoun.new("il", self, @dictionary) if self.number == :singular
+    return Pronoun.new("ils", self, @dictionary) if self.number == :plural    
   end
   
+  def corrected
+    @word_string
+  end
 end
 
 class Noun < Word
-
   def corrected
     @dictionary.nouns[@word_string][@context.article.number]
   end
-
 end
 
 class Pronoun < Word
-  
+  def corrected
+    @word_string
+  end
 end
 
 class NominalGroup
-
+    
   def initialize(nominal_string, dictionary)
     @nominal_string = nominal_string
     @dictionary = dictionary
@@ -238,60 +247,53 @@ class NominalGroup
         when @dictionary.noun?(word_string) then Noun.new(word_string, self, @dictionary)
         when @dictionary.pronoun?(word_string) then Pronoun.new(word_string, self, @dictionary)
         end
-    end
-  end 
+    end    
+  end
   
   def article
-    @words.first
+    first_word = @nominal_string.split.first      
+    Article.new(first_word, self, @dictionary) if @dictionary.article?(first_word)
+  end    
+  
+  def pronoun
+    first_word = @nominal_string.split.first
+    Pronoun.new(first_word, self, @dictionary) if @dictionary.pronoun?(first_word)
   end 
+  
+  def noun
+    @nominal_string.split.each { |word| return Noun.new(word, self, @dictionary) if @dictionary.noun?(word) }
+  end
   
   def corrected
     @words.map do |word|
       word.corrected
     end.join(' ')
   end
-  
-  def noun
-    Noun.new("coccinelle", self, @dictionary)
-  end  
     
 end
 
 class Subject < NominalGroup
-    
-  def initialize(nominal_string, dictionary)
-     super(nominal_string, dictionary)
-     @subject_string = nominal_string
-  end
-
-  def pronoun
-    first_word = @subject_string.split.first
-    return first_word if @dictionary.pronoun?(first_word)
-    return article.pronoun if @dictionary.article?(first_word)
-  end
-
 end
 
 class Complement < NominalGroup
 end
 
 class Sentence
-    
   def initialize(sentence_string, dictionary)
     @sentence_string = sentence_string
     @dictionary = dictionary
   end
-
+  
   def subject
     subject_string = @sentence_string.split[0..verb_index-1].join(' ')
-    Subject.new(subject_string, @dictionary)
+    Subject.new(subject_string, @dictionary)    
   end
   
   def verb_index
     @sentence_string.split.each.with_index do |word, index| 
-        return index if @dictionary.verb?(word)
+      return index if @dictionary.verb?(word)
     end
-  end
+  end  
 
   def verb
     verb_string = @sentence_string.split[verb_index]
@@ -301,15 +303,133 @@ class Sentence
   def complement
     complement_string = @sentence_string.split[verb_index+1..-1].join(' ')
     Complement.new(complement_string, @dictionary)
+  end  
+  
+  def corrected
+    (subject.corrected + " " + verb.corrected + " " + complement.corrected).strip
+  end
+end
+
+def corrected_sentence(sentence_string, verb, adjectives, nouns)
+  dictionary = Dictionary.new(verb, adjectives,nouns)
+  Sentence.new(sentence_string, dictionary).corrected
+end
+}
+
+SUBJECT_VERB_SOLUTION =
+%Q{
+class Verb
+  def initialize(context, dictionary)
+    @context = context
+    @dictionary = dictionary
+  end
+    
+  def corrected
+    if @context.subject.pronoun then
+        return @dictionary.verb[@context.subject.pronoun.corrected]
+    end
+    if @context.subject.article then
+        return @dictionary.verb[@context.subject.article.pronoun.corrected]        
+    end
+  end
+end
+
+class Article
+  def initialize(word_string, context, dictionary)
+    @word_string = word_string 
+    @context = context
+    @dictionary = dictionary
+  end
+  
+  def number
+    @dictionary.articles[@word_string][:number]
+  end
+  
+  def pronoun
+    return Pronoun.new("il", self, @dictionary) if self.number == :singular
+    return Pronoun.new("ils", self, @dictionary) if self.number == :plural    
   end
   
   def corrected
-     (subject.corrected + " " + verb.corrected + " " + complement.corrected).strip
+    @word_string
   end
-  
 end
 
+class Noun
+  def initialize(word_string, context, dictionary)
+    @word_string = word_string  
+    @context = context
+    @dictionary = dictionary
+  end 
+  
+  def corrected
+    @dictionary.nouns[@word_string][@context.article.number]
+  end
+end
 
+class Pronoun
+  def initialize(word_string, context, dictionary)
+    @word_string = word_string  
+    @context = context
+    @dictionary = dictionary
+  end
+  
+  def corrected
+    @word_string
+  end
+end
+
+class Subject
+  def initialize(subject_string, dictionary)
+    @subject_string = subject_string
+    @dictionary = dictionary
+  end
+  
+  def article
+    first_word = @subject_string.split.first      
+    Article.new(first_word, self, @dictionary) if @dictionary.article?(first_word)
+  end    
+  
+  def pronoun
+    first_word = @subject_string.split.first
+    Pronoun.new(first_word, self, @dictionary) if @dictionary.pronoun?(first_word)
+  end 
+  
+  def noun
+    @subject_string.split.each { |word| return Noun.new(word, self, @dictionary) if @dictionary.noun?(word) }
+  end
+  
+  def corrected
+    return article.corrected + " " + noun.corrected if article
+    return pronoun.corrected if pronoun
+  end
+end
+
+class Sentence
+  def initialize(sentence_string, dictionary)
+    @sentence_string = sentence_string
+    @dictionary = dictionary
+  end
+  
+  def subject
+    subject_string = @sentence_string.split[0..verb_index-1].join(' ')
+    Subject.new(subject_string, @dictionary)    
+  end
+  
+  def verb_index
+    @sentence_string.split.each.with_index do |word, index| 
+      return index if @dictionary.verb?(word)
+    end
+  end  
+
+  def verb
+    Verb.new(self, @dictionary)
+  end
+  
+  def corrected
+    subject.corrected + " " + verb.corrected
+  end
+end
 
 def corrected_sentence(sentence_string, verb, adjectives, nouns)
   dictionary = Dictionary.new(verb, adjectives,nouns)
@@ -438,7 +558,7 @@ class TestsNominalGroupAndVerb < Test::Unit::TestCase
 	  
     verb = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectives = [ ]
-    nouns = [ ['feminin', 'coccinelle', 'coccinelles'] ]
+    nouns = [ [:feminine, 'coccinelle', 'coccinelles'] ]
     
     assert_equal       "la coccinelle mange", 
     corrected_sentence("la coccinelle manges", verb, adjectives, nouns), "la coccinelle manges"
@@ -449,7 +569,7 @@ class TestsNominalGroupAndVerb < Test::Unit::TestCase
 	  
     verb = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectives = [ ]
-    nouns = [ ['masculin', 'renard', 'renards'] ]
+    nouns = [ [:masculine, 'renard', 'renards'] ]
     
     assert_equal       "un renard mange", 
     corrected_sentence("un renard mangent", verb, adjectives, nouns)
@@ -460,7 +580,7 @@ class TestsNominalGroupAndVerb < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['feminin', 'coccinelle', 'coccinelles'] ]
+    noms = [ [:feminine, 'coccinelle', 'coccinelles'] ]
     
     assert_equal       "une coccinelle mange", 
     corrected_sentence("une coccinelles manges", verbe, adjectifs, noms)
@@ -483,7 +603,7 @@ class TestsSubjectVerbComplement < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['masculin', 'renard', 'renards'], ['masculin', 'fruit', 'fruits'] ]
+    noms = [ [:masculine, 'renard', 'renards'], [:masculine, 'fruit', 'fruits'] ]
     
     assert_equal       "un renard mange des fruits", 
     corrected_sentence("un renard mange des fruit", verbe, adjectifs, noms)
@@ -505,7 +625,7 @@ class TestsSubjectWithOneAdjective < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['masculin', 'renard', 'renards'], ['masculin', 'fruit', 'fruits'] ]
+    noms = [ [:masculine, 'renard', 'renards'], [:masculine, 'fruit', 'fruits'] ]
     
     assert_equal       "un petit renard mange", 
     corrected_sentence("un petit renard mangent", verbe, adjectifs, noms)
@@ -516,7 +636,7 @@ class TestsSubjectWithOneAdjective < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['feminin', 'coccinelle', 'coccinelles'] ]
+    noms = [ [:feminine, 'coccinelle', 'coccinelles'] ]
     
     assert_equal       "une petite coccinelle mange", 
     corrected_sentence("une petits coccinelle manges", verbe, adjectifs, noms)
@@ -527,7 +647,7 @@ class TestsSubjectWithOneAdjective < Test::Unit::TestCase
 	  
     verbe = ['vole', 'voles', 'vole', 'volons', 'volez', 'volent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['feminin', 'coccinelle', 'coccinelles'] ]
+    noms = [ [:feminine, 'coccinelle', 'coccinelles'] ]
     
     assert_equal       "les petites coccinelles volent", 
     corrected_sentence("les petit coccinelles voles", verbe, adjectifs, noms)
@@ -538,7 +658,7 @@ class TestsSubjectWithOneAdjective < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['vert', 'verts', 'verte', 'vertes'] ]
-    noms = [ ['feminin', 'coccinelle', 'coccinelles'] ]
+    noms = [ [:feminine, 'coccinelle', 'coccinelles'] ]
     
     assert_equal       "la coccinelle verte mange", 
     corrected_sentence("la coccinelles vertes mangent", verbe, adjectifs, noms)
@@ -559,7 +679,7 @@ class TestsSubjectAndComplementWithManyAdjectives < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'],  ['joli', 'jolis', 'jolie', 'jolies'], ['vert', 'verts', 'verte', 'vertes'] ]
-    noms = [ ['feminin', 'coccinelle', 'coccinelles'] ]
+    noms = [ [:feminine, 'coccinelle', 'coccinelles'] ]
     
     assert_equal       "la jolie petite coccinelle verte mange", 
     corrected_sentence("la jolis petit coccinelles vert manges", verbe, adjectifs, noms)
@@ -570,7 +690,7 @@ class TestsSubjectAndComplementWithManyAdjectives < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['masculin', 'fruit', 'fruits'] ]
+    noms = [ [:masculine, 'fruit', 'fruits'] ]
     
     assert_equal       "ils mangent des petits fruits", 
     corrected_sentence("ils mange des petit fruit", verbe, adjectifs, noms)
@@ -581,7 +701,7 @@ class TestsSubjectAndComplementWithManyAdjectives < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['masculin', 'fruit', 'fruits'] ]
+    noms = [ [:masculine, 'fruit', 'fruits'] ]
     
     assert_equal       "je mange un petit fruit", 
     corrected_sentence("je manges un petits fruits", verbe, adjectifs, noms)
@@ -592,7 +712,7 @@ class TestsSubjectAndComplementWithManyAdjectives < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['feminin', 'orange', 'oranges'] ]
+    noms = [ [:feminine, 'orange', 'oranges'] ]
     
     assert_equal       "ils mangent des petites oranges", 
     corrected_sentence("ils mange des petit orange", verbe, adjectifs, noms)
@@ -603,7 +723,7 @@ class TestsSubjectAndComplementWithManyAdjectives < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'], ['vert', 'verts', 'verte', 'vertes'] ]
-    noms = [ ['masculin', 'fruit', 'fruits'] ]
+    noms = [ [:masculine, 'fruit', 'fruits'] ]
     
     assert_equal       "ils mangent un petit fruit vert", 
     corrected_sentence("ils manges un petits fruits verte", verbe, adjectifs, noms)
@@ -614,7 +734,7 @@ class TestsSubjectAndComplementWithManyAdjectives < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'] ]
-    noms = [ ['feminin', 'coccinelle', 'coccinelles'], ['feminin', 'orange', 'oranges'] ]
+    noms = [ [:feminine, 'coccinelle', 'coccinelles'], [:feminine, 'orange', 'oranges'] ]
     
     assert_equal       "les petites coccinelles mangent une petite orange", 
     corrected_sentence("les petits coccinelle manges une petits oranges", verbe, adjectifs, noms)
@@ -625,7 +745,7 @@ class TestsSubjectAndComplementWithManyAdjectives < Test::Unit::TestCase
 	  
     verbe = ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent']
     adjectifs = [ ['petit', 'petits', 'petite', 'petites'],  ['joli', 'jolis', 'jolie', 'jolies'], ['vert', 'verts', 'verte', 'vertes'] ]
-    noms = [ ['feminin', 'coccinelle', 'coccinelles'], ['masculin', 'kiwi', 'kiwis'] ]
+    noms = [ [:feminine, 'coccinelle', 'coccinelles'], [:masculine, 'kiwi', 'kiwis'] ]
     
     assert_equal       "les jolies petites coccinelles vertes mangent des jolis petits kiwis verts", 
     corrected_sentence("les joli petits coccinelle vert manges des jolie petite kiwi verte", verbe, adjectifs, noms)
@@ -639,7 +759,7 @@ end
 TITLE = 'RUBY - Programmation Orientée Objet'    
 SLIDES = [
 {		:Section => [
-			"<h3 style='text-align:center'>INTRODUCTION A RUBY</h3>",
+			"<h3 style='text-align:center'>Programmation Orientée Objet </br> avec RUBY</h3>",
 			"<h3 style='color: red; text-align:center'>CONNECTEZ VOUS SUR :</h3>",
 			"<h4 style='color: blue; font-size: 1.3em; text-align:center'>http://ruby-dev-object.herokuapp.com</h4>",
       "<h3 style='text-align:center'>ET</h3>",
@@ -648,46 +768,7 @@ SLIDES = [
 			'<div class="code_to_display"> puts "CONNEXION REUSSIE, BIENVENUE"</div>',
 			],			
 },
-{ :Subtitle => "Les objets", 
-			:Section => [	
-			"</p>",
-			"Affichez sur la sur la sortie standard",
-			"</p>",
-			"<p>",				
-			"<font color='red'>15 fois de suite la chaine de caractères</font>", 
-			"</p>", 
-			"<p>",      
-      "<span class='help_string'>\"RUBY !\"</span>",    
-			"</p>",      
-			],			
-},
-{ :Subtitle => "Les objets", 
-			:Section => [
-			"<p>",				
-			"Affichez sur la sur la sortie standard",
-			"</p>",
-			"<p>",				
-			"<font color='red'>15 fois de suite la chaine de caractères</font>", 
-			"</p>", 
-      "<p>",
-			"<font color='red'>\"EN APPELANT\" la methode '*' de l'objet chaine</font>",
-      "</p>",
-			],			
-},
-{ :Subtitle => "Les objets", 
-			:Section => [
-			"<p>",				
-			"Affichez",
-			"</p>",
-			"<font color='red'>les méthodes</font>",       
-			"<p>",				
-			"de l'objet",
-			"</p>",  				
-      "<span class='help_string'>\"RUBY !\"</span>",  
-			"</p>",
-			],			
-},
-{ :Subtitle => "Les objets", 
+{ :Subtitle => "Objets Ruby & Méthodes", 
 			:Section => [
 			"<p>",				
 			"Affichez",
@@ -700,34 +781,46 @@ SLIDES = [
 			"</p>",
 			],			
 },
-{ :Subtitle => "Les objets", 
+{ :Subtitle => "Objets Ruby & Méthodes", 
+			:Section => [	
+			"</p>",
+			"Affichez sur la sur la sortie standard",
+			"</p>",
+			"<p>",				
+			"<font color='red'>15 fois de suite la chaine de caractères</font>", 
+			"</p>", 
+			"<p>",      
+      "<span class='help_string'>\"RUBY !\"</span>",    
+			"</p>",      
+			],			
+},
+{ :Subtitle => "Objets Ruby & Méthodes", 
+			:Section => [
+			"<p>",				
+			"Affichez sur la sur la sortie standard",
+			"</p>",
+			"<p>",				
+			"<font color='red'>15 fois de suite la chaine de caractères</font>", 
+			"</p>", 
+      "<p>",
+			"\"EN APPELANT\" la méthode '*' de l'objet",
+      "</p>",
+			],			
+},
+{ :Subtitle => "Objets Ruby & Méthodes", 
 			:Section => [
 			"<p>",				
 			"Affichez",
 			"</p>",
-			"<font color='red'>le nombre de méthodes</font>",       
+			"<font color='red'>les méthodes</font>",       
 			"<p>",				
-			"de la chaine",
+			"de l'objet",
 			"</p>",  				
       "<span class='help_string'>\"RUBY !\"</span>",  
 			"</p>",
 			],			
 },
-{ :Subtitle => "Les classes", 
-			:Section => [
-			"<p>",				
-			"Affichez",
-			"</p>",
-			"<font color='red'>la classe</font>",       
-			"<p>",				
-			"de l'objet",
-			"</p>",      
-			"<p>",				
-      "<span class='help_string'>\"RUBY !\"</span>",  
-			"</p>",     
-			],			
-},
-{ :Subtitle => "Les classes", 
+{ :Subtitle => "Objets Ruby & Constructeur", 
 			:Section => [
 			"<p>",				
 			"Déclarez une variable", 
@@ -749,36 +842,27 @@ SLIDES = [
 			"</p>"     
 			],			
 },
-{ :Subtitle => "Les classes", 
+{ :Subtitle => "Méthodes d'Instance & Méthodes de Classe", 
 			:Section => [
 			"<p>",				
 			"Affichez", 
 			"</p>",
 			"</p>",
-			"<font color='red'>les méthodes</font>",       
+			"<font color='red'>le nombre de méthodes de classe</font>",       
 			"<p>", 
 			"<p>",				
 			"de la classe", 
 			"</p>",      
 			"</p>",
 			"<font color='red'>String</font>",       
-			"<p>",     
-			],			
-},
-{ :Subtitle => "Les classes", 
-			:Section => [
-			"<p>",				
-			"Affichez", 
+			"<p>",  
+      "et",
 			"</p>",
+			"<font color='red'>le nombre de méthodes de l'instance de classe (l'objet)</font>",       
+			"<p>",       
 			"</p>",
-			"<font color='red'>le nombre de méthodes</font>",       
-			"<p>", 
-			"<p>",				
-			"de la classe", 
-			"</p>",      
-			"</p>",
-			"<font color='red'>String</font>",       
-			"<p>",     
+			"<span class='help_string'>\"RUBY !\"</span>",     
+			"<p>",         
 			],			
 },
 { :Subtitle => "Les classes", 
@@ -788,30 +872,7 @@ SLIDES = [
 			"</p>",
 			"</p>",
 			"<font color='red'>Word</font>",       
-			"<p>", 
-			"<p>",				
-			"et affichez", 
-			"</p>",
-			"</p>",
-			"<font color='red'>les méthodes</font>",       
-			"<p>", 
-			"<p>",				
-			"de la classe", 
-			"</p>",      
-			],			
-},
-{ :Subtitle => "Les classes", 
-			:Section => [
-			"<p>",				
-			"Affichez",
-			"</p>",
-			"<font color='red'>le nombre de méthodes</font>",       
-			"<p>",				
-			"de la classe",
-			"</p>",  				
-			"<p>",
-			"<font color='red'>Word</font>",       
-			"</p>", 
+			"<p>",     
 			],			
 },
 { :Subtitle => "Les méthodes", 
@@ -823,68 +884,8 @@ SLIDES = [
 			"<font color='red'>(un objet) word</font>",       
 			"<p>", 
 			"<p>",				
-			"et affichez",
-			"</p>",
-			"</p>",
-			"<font color='red'>les méthodes</font>",       
-			"<p>", 
-			"<p>",				
-			"de l'objet", 
-			"</p>",      
-			],			
-},
-{ :Subtitle => "Les méthodes", 
-			:Section => [
-			"<p>",				
-			"Affichez",
-			"</p>",
-			"<font color='red'>le nombre de méthodes</font>",       
-			"<p>",				
-			"de l'objet",
-			"</p>",  				
-			"<p>",
-			"<font color='red'>word</font>",       
-			"</p>", 
-			],			
-},
-{ :Subtitle => "Les méthodes", 
-			:Section => [
-			"<p>",				
-			"Affichez",
-			"</p>",
-			"<font color='red'>la différence entre le nombre de méthodes</font>",       
-			"<p>",				
-			"de l'objet",
-			"</p>",  				
-			"<p>",
-			"<font color='red'>word</font>",       
-			"</p>", 
-      "<p>et</p>",
-			"<p>",				
-			"de la classe",
-			"</p>",  				
-			"<p>",
-			"<font color='red'>Word</font>",       
-			"</p>",       
-			],			
-},
-{ :Subtitle => "Les méthodes", 
-			:Section => [
-			"<p>",				
-			"Créez une méthode", 
-			"</p>",
-			"</p>",
-			"<font color='red'>zz</font>",       
-			"<p>", 
-			"<p>",				
-			"et affichez",
-			"</p>",
-			"</p>",
-			"<font color='red'>les méthodes</font>",       
-			"<p>", 
-			"<p>",				
-			"de l'objet", 
-			"</p>",      
+			"et affichez le sur la sortie standard",
+			"</p>",   
 			],			
 },
 { :Subtitle => "Les méthodes", 
@@ -911,19 +912,22 @@ SLIDES = [
 { :Subtitle => "L'encapsulation", 
 			:Section => [
 			"<p>",				
-			"Créez un objet", 
+			"Initialisez l'objet", 
 			"</p>",
 			"<p>",
 			"<span class='help_variable'>word</span>",
 			"</p>", 
 			"<p>",				
-			"qui contient la valeur", 
+			"avec la valeur", 
 			"</p>",      
 			"<p>",				
 			"<span class='help_string'>\"RUBY\"</span>",
 			"</p>", 
+      "<p>",
+			"en créant une propriété <span class='help_property'>@word_string</span>",       
+			"</p>", 
 			"<p>",
-			"et affichez le",       
+			"et affichez cet objet",       
 			"</p>",       
 			"<p>",
 			"<font color='red'>avec puts, puis avec p</font>",       
@@ -933,41 +937,38 @@ SLIDES = [
 { :Subtitle => "L'encapsulation", 
 			:Section => [
 			"<p>",				
-			"Changer la valeur du mot", 
+			"Affichez le contenu de propriété", 
 			"</p>",
 			"<p>",
-			"<span class='help_variable'>word</span>",
-			"</p>", 
-			"<p>",				
-			"avec cette valeur", 
-			"</p>",      
-			"<p>",				
-			"<span class='help_string'>\"BLOC\"</span>",
-			"</p>",      
+			"<span class='help_property'>@word_string</span>",
+			"</p>",       
 			],			
 },
 { :Subtitle => "L'encapsulation", 
 			:Section => [
 			"<p>",				
-			"Définissez la methode \"setter\"", 
+			"Changez la valeur de la propriété", 
 			"</p>",
 			"<p>",
-			"<span class='help_variable'>word_string=</span>",
+			"<span class='help_property'>@word_string</span>",
 			"</p>",      
-			],			
-},
-{ :Subtitle => "L'encapsulation", 
-			:Section => [
 			"<p>",				
-			"Utilsez attr_accessor pour remplacer", 
-			"</p>",
-			"<p>",
-			"<span class='help_variable'>word_string=</span>",
+			"avec la valeur <span class='help_string'>\"Sinatra\"</span>",
 			"</p>",      
 			],			
 },
 { :Subtitle => "Le polymorphisme", 
 			:Section => [
+			"<p>",				
+			"Appeler la méthode", 
+			"</p>",   
+			"<p>",
+			"<span class='help_variable'>to_s</span>",
+			"</p>",  
+			"<p>",
+			"de l'objet <span class='help_variable'>word</span>",
+			"</p>",       
+      "<font color='red'>puis</font>",
 			"<p>",				
 			"Surchagez la méthodes", 
 			"</p>",
@@ -975,42 +976,53 @@ SLIDES = [
 			"<span class='help_variable'>to_s</span>",
 			"</p>",
 			"</p>",
-			"<font color='red'>pour retourner la valeur de l'objet</font>",       
+			"pour retourner la propriété <span class='help_property'>@word_string</span>",       
 			"<p>",      
 			],			
 },
 { :Subtitle => "L'héritage", 
 			:Section => [
 			"<p>",				
-			"Créez un classe", 
+			"Créez une classe", 
 			"</p>",
 			"<p>",
 			"<span class='help_variable'>Noun</span>",       
 			"</p>",
 			"</p>",
 			"<font color='red'>qui hérite de la classe Word</font>",       
-			"<p>",  
+			"<p>",
+			],			
+},
+{ :Subtitle => "L'héritage", 
+			:Section => [
       "<p>",
-      "et qui implémente la méthode",
+      "Implémenter la méthode",
       "</p>",
       "<p>",      
       "<span class='help_variable'>gender</span>",
       "</p>",   
 			"</p>",
 			"qui retourne le symbol <span class='help_symbol'>:masculine</span>",       
-			"<p>",      
-			"</p>",
-			"L'initialiser avec la valeur",       
+			"<p>",       
+			],			
+},
+{ :Subtitle => "L'héritage", 
+			:Section => [    
 			"<p>",
-			"<p>",				
-			"<span class='help_string'>\"canard\"</span>",
-			"</p>",        
+			"L'initialisez un objet <span class='help_variable'>noun</span>",
+      "</p>",
+      "<p>",
+      "avec la valeur <span class='help_string'>\"canard\"</span>",
+      "</p>",
+      "<p>",
+      "et affichez le genre de l'objet",
+      "</p>",      
 			],			
 },
 { :Subtitle => "L'héritage", 
 			:Section => [
 			"<p>",				
-			"Créez un classe", 
+			"Créez une classe", 
 			"</p>",
 			"<p>",
 			"<span class='help_variable'>Article</span>",       
@@ -1038,7 +1050,7 @@ SLIDES = [
 { :Subtitle => "Le design pattern \"Stratégie\"", 
 			:Section => [
 			"<p>",				
-			"Créez un classe", 
+			"Créez une classe", 
 			"</p>",
 			"<p>",
 			"<span class='help_variable'>DictionaryWord</span>",       
@@ -1057,14 +1069,14 @@ SLIDES = [
 { :Subtitle => "Le 'Duck Typing'", 
 			:Section => [
 			"<p>",				
-			"Supprimez la class Word", 
+			"Supprimez la classe Word", 
 			"</p>",     
 			],			
 },
 { :Subtitle => "Mise en oeuvre : Le dictionnaire", 
 			:Section => [
       "<p>",
-			"Utilsez le dictionnaire...",
+			"Utilisez le dictionnaire...",
       "</p>",
       "<p>",
 			"Pour vérifier si le mot 'mange' est un verbe",
@@ -1072,25 +1084,21 @@ SLIDES = [
 			],	
       :Helper => [
       "<p>",
-			"Utilsez le dictionnaire...",
+			"Utilisez le dictionnaire...",
       "</p>",
       "<p>",
 			"Pour vérifier si le mot 'mange' est un verbe",
       "</p>" ,      
       "<div class='code_to_display'> 
       #{ DICTIONARY } 
-      dictionary = Dictionary.new(
-        ['mange', 'manges', 'mange', 'mangeons', 'mangez', 'mangent'],
-        [ ['petit', 'petits', 'petite', 'petites'] ],
-        [ ['feminin', 'coccinelle', 'coccinelles'], ['feminin', 'orange', 'oranges'] ]
-      )      
+      #{ DICTIONARY_EXAMPLE }
     </div>",
       ],      
 },
 { :Subtitle => "Mise en oeuvre : Le dictionnaire", 
 			:Section => [
       "<p>",
-			"Utilsez le dictionnaire...",
+			"Utilisez le dictionnaire...",
       "</p>",
       "<p>",
 			"Pour vérifier si le mot 'petits' est un adjectif",
@@ -1100,7 +1108,7 @@ SLIDES = [
 { :Subtitle => "Mise en oeuvre : Le dictionnaire", 
 			:Section => [
       "<p>",
-			"Utilsez le dictionnaire...",
+			"Utilisez le dictionnaire...",
       "</p>",
       "<p>",
 			"Pour vérifier si le mot 'coccinelle' est un nom",
@@ -1110,30 +1118,30 @@ SLIDES = [
 { :Subtitle => "Mise en oeuvre : Le dictionnaire", 
 			:Section => [
       "<p>",
-			"Utilsez le dictionnaire...",
+			"Utilisez le dictionnaire...",
       "</p>",
       "<p>",
-			"Pour donner le genre de l'adjectif 'orange'",
+			"Pour donner le genre du nom 'orange'",
       "</p>"      
 			]     
 },
 { :Subtitle => "Mise en oeuvre : Le dictionnaire", 
 			:Section => [
       "<p>",
-			"Utilsez le dictionnaire...",
+			"Utilisez le dictionnaire...",
       "</p>",
       "<p>",
-			"Pour donner féminin pluirel de l'adjectif 'petit'",
+			"Pour donner le féminin pluriel de l'adjectif 'petit'",
       "</p>"      
 			]     
 },
 { :Subtitle => "Mise en oeuvre : Le dictionnaire", 
 			:Section => [
       "<p>",
-			"Utilsez le dictionnaire...",
+			"Utilisez le dictionnaire...",
       "</p>",
       "<p>",
-			"Pour donner la conjugaison de 'mange' à la 2ème personne du pluriel",
+			"Pour donner la conjugaison du verbe 'mange' à la 2ème personne du pluriel",
       "</p>"      
 			]     
 },
@@ -1149,7 +1157,7 @@ SLIDES = [
 			:Section => [    
 			],
       :Helper => [    
-      "<div class='code_to_display'> #{ DICTIONARY } </div>",
+      "<div class='code_to_display'> #{ DICTIONARY + SUBJECT_VERB_SOLUTION } </div>",
       "<div class='code_to_add'> #{ TESTS_PRONOUN_AND_VERB + TESTS_NOMINAL_GROUP_AND_VERB } </div>",
       ],    
 },
@@ -1157,23 +1165,22 @@ SLIDES = [
 			:Section => [     
 			],
       :Helper => [    
-      "<div class='code_to_display'> #{ DICTIONARY + SOLUTION_SUBJECT_VERB_COMPLEMENT } </div>",
+      "<div class='code_to_display'> #{ DICTIONARY + SUBJECT_VERB_COMPLEMENT_SOLUTION } </div>",
       "<div class='code_to_add'> #{ TESTS_PRONOUN_AND_VERB + TESTS_NOMINAL_GROUP_AND_VERB + TESTS_SUBJECT_VERB_COMPLEMENT} </div>",
       ],    
 },
 { :Subtitle => "Correcteur orthographique </br> (Sujet + Adjectif  + Verbe + Complement)", 
 			:Section => [      
 			],
-      :Helper => [    
-      "<div class='code_to_display'> #{ DICTIONARY } </div>",
+      :Helper => [ 
+      "<div class='code_to_display'> #{ DICTIONARY + SUBJECT_VERB_COMPLEMENT_SOLUTION } </div>",      
       "<div class='code_to_add'> #{ TESTS_PRONOUN_AND_VERB + TESTS_NOMINAL_GROUP_AND_VERB + TESTS_SUBJECT_VERB_COMPLEMENT + TESTS_SUBJECT_WITH_ONE_ADJECTIVE } </div>",
       ],    
 },
 { :Subtitle => "Correcteur orthographique </br> (Sujet + Adjectif  + Verbe + Complement + Adjectifs)", 
 			:Section => [      
 			],
-      :Helper => [    
-      "<div class='code_to_display'> #{ DICTIONARY } </div>",
+      :Helper => [       
       "<div class='code_to_add'> #{ TESTS_PRONOUN_AND_VERB + TESTS_NOMINAL_GROUP_AND_VERB + TESTS_SUBJECT_VERB_COMPLEMENT + TESTS_SUBJECT_WITH_ONE_ADJECTIVE + TESTS_SUBJECT_AND_COMPLEMENT_WITH_MANY_ADJECTIVES} </div>",
       ],    
 },
