@@ -1,6 +1,7 @@
 require 'sinatra'
 
 set :public_folder, 'public'
+set :views, 'views'
 set :logging, false
 
 set :bind, '0.0.0.0'
@@ -9,26 +10,29 @@ enable :sessions; set :session_secret, 'secret'
 
 require_relative 'slideshow_helper'
 
+require_relative '../views/presentation/content'
+
 # ---------
 # GETs
 # ---------
 
 get '/' do
   session[:user_id] ||= next_user_id
-  send_file "views/slideshow-attendee.html"
+  erb :slideshow_attendee  
 end
 
 get '/blackboard' do
-  send_file "views/blackboard.html"
+  erb :slideshow_blackboard
 end
 
 get '/blackboard_hangout.xml' do
-  send_file "views/blackboard_hangout.xml"
+  content_type 'text/xml'
+  erb :slideshow_blackboard_hangout
 end
 
 get '/teacher-x1973' do
   session[:user_id] = '0'
-  send_file "views/slideshow-teacher.1973x.html"
+  erb :slideshow_teacher
 end
 
 get '/teacher_current_slide' do
@@ -43,21 +47,21 @@ end
 get '/code_last_execution/*' do
   last_execution = RunTimeEvent.find_last_user_execution_on_slide(session[:user_id], slide_index)
   return "" if last_execution == nil
-  last_execution.user + "#|||||#" + last_execution.code_input
+  last_execution.user + $SEPARATOR + last_execution.code_input
 end
 
 get '/code_attendees_last_send/*' do
   response.headers['Access-Control-Allow-Origin'] = '*' 
   last_send = RunTimeEvent.find_attendees_last_send_on_slide(session[:user_id], slide_index)
   return "" if last_send == nil
-  last_send.user + "#|||||#" + last_send.code_input
+  last_send.user + $SEPARATOR + last_send.code_input
 end
 
 get '/code_get_last_send_to_blackboard/*' do
   response.headers['Access-Control-Allow-Origin'] = '*'    
   last_teacher_run = RunTimeEvent.find_last_send_to_blackboard(slide_index)
   return "" if last_teacher_run == nil
-  last_teacher_run.user + "#|||||#" + last_teacher_run.code_input  
+  last_teacher_run.user + $SEPARATOR + last_teacher_run.code_input  
 end
 
 get '/session_id' do
