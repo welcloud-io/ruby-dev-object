@@ -62,7 +62,8 @@ Position.prototype = {
 // SLIDESHOW CLASS
 // ----------------------------------  
 var SlideShow = function(slides) {
-  this._numberOfSlides = slides.length;  
+
+  this._numberOfSlides = slides.length; 
   this.initEvents();
   this.initSlides(slides);
   this.initPosition();
@@ -91,7 +92,7 @@ SlideShow.prototype = {
 
   initPosition: function() {
     this.position = new Position(this);
-    this.position.updateWithTeacherPosition();    
+    this.position.updateWithTeacherPosition(); 
   },  
   
   _refresh: function() {
@@ -121,7 +122,7 @@ SlideShow.prototype = {
     if (this._slides.length == 0) return;  
     this._clear();	    
     this.currentSlide().setState('current'); 
-    this.currentSlide()._update(this._currentIndex);    
+    this.currentSlide()._update();    
   },  
   
 };
