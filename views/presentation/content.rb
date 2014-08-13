@@ -1,7 +1,5 @@
 #encoding: utf-8
 
-require_relative 'globals'
-
 TITLE = 'RUBY - Programmation Orientée Objet'
 
 $slides = []
