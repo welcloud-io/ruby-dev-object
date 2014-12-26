@@ -70,13 +70,14 @@ Resource.prototype = {
       this._getResourceWithCallBack(xmlhttp, path, object, callback);
     } else {
       xmlhttp.open("GET", SERVER_PATH + path, false);
-      xmlhttp.send();    
+      xmlhttp.send();   
       return xmlhttp.responseText;
     }
   },
   
   post: function(path, params, synchronous_asynchronous) {
     var xmlhttp = new XMLHttpRequest();	
+
     xmlhttp.open("POST", SERVER_PATH + path, synchronous_asynchronous);
     xmlhttp.setRequestHeader("Content-type","application/x-www-form-urlencoded");
     xmlhttp.send(params);	

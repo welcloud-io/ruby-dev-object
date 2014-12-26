@@ -18,12 +18,11 @@ for(key in PollSlide.prototype) {
 var BlackboardCodeSlide = function(node, slideshow) {
   CodeSlide.call(this, node, slideshow);
   
-  this._runResource = '/code_run_result_blackboard';
-  this._sendResource = ''
-  this._getAndRunResource = ''  
+  this._runResource = '/code_run_result'; 
   this._updateResource = '/code_get_last_send_to_blackboard'
-  
-  this._attendeesLastSendResource = '/code_attendees_last_send';    
+  this._attendeesLastSendResource = '/code_attendees_last_send';   
+
+  this._saveURL = "/code_save_blackboard_execution_context";  
 };
 
 BlackboardCodeSlide.prototype = {
@@ -32,6 +31,16 @@ BlackboardCodeSlide.prototype = {
     this._serverExecutionContext.updateWithResource(this._attendeesLastSendResource);
     this._editor._authorBar.updateLastSendAttendeeNameWith(this._serverExecutionContext.author);
   },
+
+  _update: function() {
+    this._codeHelpers.update();
+    this._serverExecutionContext.updateWithResource(this._updateResource);  
+    if (this._editor.update()) {
+      this.run();  
+      this._editor._authorBar.updateAuthorNameWith(this._serverExecutionContext.author);
+    }
+    this._updateLastSendAttendeeName();    
+  },  
   
 };
 
@@ -58,9 +67,8 @@ BlackboardSlideShow.prototype = {
   },
   
   _refresh: function() {
-    SlideShow.prototype._refresh.call(this);
-    this.currentSlide()._update(this._currentIndex); 
-    this._last_slide()._updateLastSendAttendeeName();      
+    this.position.updateWithTeacherPosition();   
+    this.currentSlide()._update();     
   },  
   
   handleKeys: function(e) {

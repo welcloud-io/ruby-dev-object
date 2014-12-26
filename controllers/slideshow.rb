@@ -7,122 +7,16 @@ set :logging, false
 set :bind, '0.0.0.0'
 set :show_exceptions, false
 
-enable :sessions; set :session_secret, 'secret'
+# enable :sessions; set :session_secret, 'secret'
+
+use Rack::Session::Cookie, :key => 'rack.session',
+                           :path => '/',
+                           :secret => 'secret'
 
 require_relative 'slideshow_helper'
 
-require_relative '../views/presentation/content'
-
-# ---------
-# GETs
-# ---------
-
-get '/' do
-  session[:user_session_id] ||= next_session_id
-  erb :slideshow_attendee  
-end
-
-get '/blackboard' do
-  erb :slideshow_blackboard
-end
-
-get '/blackboard_hangout.xml' do
-  content_type 'text/xml'
-  erb :slideshow_blackboard_hangout
-end
-
-get '/teacher-x1973' do
-  session[:user_session_id] = $teacher_session_id
-  erb :slideshow_teacher
-end
-
-get '/admin/flip' do
-  send_file "views/flip_page.html"
-end
-
-get '/teacher_current_slide' do
-  response.headers['Access-Control-Allow-Origin'] = '*'  
-  current_slide_id
-end
-
-get '/poll_response_*_rate_to_*' do
-  PollQuestion.new(question_id).rate_for(answer).to_s
-end
-
-get '/code_last_execution/*' do
-  last_execution = RunTimeEvent.find_last_user_execution_on_slide(session[:user_session_id], slide_index)
-  return "" if last_execution == nil
-  user_name_of(last_execution.user) + $SEPARATOR + last_execution.code_input
-end
-
-get '/code_attendees_last_send/*' do
-  response.headers['Access-Control-Allow-Origin'] = '*' 
-  last_send = RunTimeEvent.find_attendees_last_send_on_slide(session[:user_session_id], slide_index)
-  return "" if last_send == nil
-  user_name_of(last_send.user) + $SEPARATOR + last_send.code_input
-end
-
-get '/code_get_last_send_to_blackboard/*' do
-  response.headers['Access-Control-Allow-Origin'] = '*'    
-  last_teacher_run = RunTimeEvent.find_last_send_to_blackboard(slide_index)
-  return "" if last_teacher_run == nil
-  user_name_of(last_teacher_run.user) + $SEPARATOR + last_teacher_run.code_input  
-end
-
-get '/session_id' do
-  response.headers['Access-Control-Allow-Origin'] = '*'  
-  session[:user_session_id]
-end
-
-get '/session_id/user_name' do
-  response.headers['Access-Control-Allow-Origin'] = '*'
-  user_name_of(session[:user_session_id])
-end
-
-get '/admin/flip/*' do
-  Flip.find(params[:splat][0]).value
-end
-
-# ---------
-# POSTs
-# ---------
-
-post '/teacher_current_slide' do
-  update_current_slide_id params[:index] + ';' + params[:ide_displayed] 
-end
-
-post '/poll_response_*_to_*' do
-  PollQuestion.new(question_id).add_a_choice(user_session_id, answer)
-end
-
-post '/rating_input_*_to_*' do
-  PollQuestion.new(question_id).add_a_choice(user_session_id, answer)
-end
-
-post '/select_input_*_to_*' do
-  PollQuestion.new(question_id).add_a_choice(user_session_id, answer)
-end
-
-post '/code_run_result/*' do
-  code = request.env["rack.input"].read
-  run_ruby("run", code.force_encoding("UTF-8"), user_session_id, slide_index)
-end
-
-post '/code_run_result_blackboard/*' do
-  response.headers['Access-Control-Allow-Origin'] = '*'    
-  code = request.env["rack.input"].read
-  run_ruby("run", code.force_encoding("UTF-8"), 'blackboard', slide_index)
-end
-
-post '/code_send_result/*' do
-  code = request.env["rack.input"].read
-  run_ruby("send", code.force_encoding("UTF-8"), user_session_id, slide_index)
-end
-
-post '/session_id/user_name' do
-  session[:user_session_id] = session[:user_session_id].split('_')[0] + '_' + params[:user_name]
-end
-
-post '/admin/flip/*' do
-  Flip.new(params[:splat][0], params[:value]).save
-end
+require_relative "slideshow-login"
+require_relative "slideshow-polls"
+require_relative "slideshow-code"
+require_relative "slideshow-admin"
+require_relative "slideshow-current_slide"

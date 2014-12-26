@@ -61,6 +61,7 @@ for(key in Slide.prototype) {
 var ServerExecutionContext = function(slide) {
   this._slide = slide;
   this.author = '';
+  this.type = '';
   this.code = '';
   this.code_to_add = '';
   this._executionContextResource = new Resource();  
@@ -79,18 +80,22 @@ ServerExecutionContext.prototype = {
   },
   
   getContextOnServer: function(url) {
-    last_execution = (this._executionContextResource.get(url)).split(SEPARATOR);
-    author = last_execution[0];
-    code = (last_execution[1]) ? last_execution[1] : '';
-    code_to_add = (last_execution[2]) ? last_execution[2] : '';
-    return { "author": author, "code" : code, "code_to_add" : code_to_add };   
+    contextString = this._executionContextResource.get(url)
+    if (contextString) return JSON.parse(contextString);
   },
   
   updateWithResource: function(resourceURL) {
-    newServerExecutionContext = this.getContextOnServer(resourceURL + '/' + this._slide._codeHelpers._currentIndex);
-    this.author = newServerExecutionContext.author;
-    this.code = newServerExecutionContext.code;
-    this.code_to_add = newServerExecutionContext.code_to_add;
+    newServerExecutionContext = this.getContextOnServer(resourceURL + '/' + this._slide._codeHelpers._currentIndex);   
+    this.author = (newServerExecutionContext.author) ? newServerExecutionContext.author : '';
+    this.type = (newServerExecutionContext.type) ? newServerExecutionContext.type : '';
+    this.code = (newServerExecutionContext.code) ? newServerExecutionContext.code : '';
+    if (this.code != '') {
+      code_split = this.code.split(SEPARATOR);
+      this.code = code_split[0]
+      this.code_to_add = (code_split[1]) ? code_split[1] : '';
+    } else {
+      this.code_to_add = '';
+    }
   },
 
 }
@@ -110,6 +115,10 @@ var AuthorBar = function(node) {
 }
 
 AuthorBar.prototype = {
+  
+  userNameIsUnknown: function() {
+    return this.userName == this.UNKNOWN;
+  },  
   
   refreshSessionUserName: function() {
     sessionUserName = this._sessionIDResource.get('/session_id/user_name');
@@ -164,10 +173,17 @@ Editor.prototype = {
   updateWithServerExecutionContext: function() {
     if (  this._slide._serverExecutionContext.codeToExecute() == this._slide.codeToExecute() 
           && this._authorBar.userName == this._slide._serverExecutionContext.author) return false;
-    this.updateWithText(this._slide._serverExecutionContext.code);
-    this._authorBar.updateAuthorNameWith(this._slide._serverExecutionContext.author);      
+    this.updateWithText(this._slide._serverExecutionContext.code);     
     return true
   },
+  
+  update: function() {
+    if (this._slide._serverExecutionContext.isEmpty()) {
+      return this.updateWithLocalExecutionContext();
+    } else {
+      return this.updateWithServerExecutionContext();
+    }    
+  }
   
 }
 
@@ -236,12 +252,14 @@ CodeHelpers.prototype = {
     for (var i=0; i<this._codeHelpers.length; i++) {
       this._codeHelpers[i].setState('');
     }
-  },  
+  }, 
+  
   update: function() {
     this._clear();    
-    this._currentIndex = (this._slide._editor._authorBar.userName == this._slide._editor._authorBar.UNKNOWN) ? 0 : this._slide._slideshow._currentIndex;
+    this._currentIndex = (this._slide._editor._authorBar.userNameIsUnknown()) ? 0 : this._slide._slideshow._currentIndex;
     this._codeHelpers[this._currentIndex].setState('current');     
   },
+  
   current: function() {
     return this._codeHelpers[this._currentIndex]    
   },  
@@ -259,12 +277,14 @@ var CodeSlide = function(node, slideshow) {
   this._standardOutput = new StandardOutput(this._node.querySelector('#code_output'));
   this._codeHelpers = new CodeHelpers(queryAll(node, '.code_helper'), this);   
   
-  this._runResource = '/code_run_result';
-  this._sendResource = '/code_send_result';
+  this._runResource = 'code_run_result';
+  // this._runResource = 'http://localhost:5000';
   this._getAndRunResource = '/code_get_last_send_to_blackboard'    
-  this._updateResource = '/code_last_execution'    
+  this._updateResource = '/code_last_execution'
+  this._saveURL = "/code_save_execution_context";
   
   this._executionResource = new Resource();
+  this._saveResource = new Resource(); 
 };
 
 CodeSlide.prototype = {
@@ -288,8 +308,7 @@ CodeSlide.prototype = {
   _bindKeys: function(e) {  
       if (e.which == R) { this._node.querySelector('#execute').click(); }
       if (e.which == S) { this._node.querySelector('#send_code').click(); }
-      if (e.which == G) { this._node.querySelector('#get_code').click(); }
-      if (e.which == N) { this._node.querySelector('#get_last_send').click();}    
+      if (e.which == G) { this._node.querySelector('#get_code').click(); }    
   },
   
   _declareEvents: function() {  
@@ -309,16 +328,13 @@ CodeSlide.prototype = {
       function(e) { _t._keyHandling(e); }, false
     );
     this._node.querySelector('#execute').addEventListener('click',
-      function(e) { _t.executeCode(); }, false
+      function(e) { _t.run(); }, false
     );     
     this._node.querySelector('#send_code').addEventListener('click',
-      function(e) { _t.executeCodeAt(_t._sendResource); }, false
+      function(e) { _t.runAndSend(); }, false
     );     
     this._node.querySelector('#get_code').addEventListener('click',
-      function(e) { 
-        _t._serverExecutionContext.updateWithResource(_t._getAndRunResource); 
-        if (_t._editor.updateWithServerExecutionContext()) { _t.executeCodeAt(_t._runResource); }
-      }, false
+      function(e) { _t.getAndRun(); }, false
     );
   },  
   
@@ -333,27 +349,50 @@ CodeSlide.prototype = {
   codeToAdd: function() {
     return this._codeHelpers.current().codeToAdd();
   },
-  
-  executeCodeAt: function(url) {
-    if (this.codeToExecute() == '' ) return;
-    this._standardOutput.clear();
-    url += ("/" + this._codeHelpers._currentIndex);
-    executionResult = this._executionResource.post(url, this.codeToExecute(), SYNCHRONOUS);  
-    this._standardOutput.updateWith(executionResult);    
+
+  _runResult: function() { 
+    runURL = this._runResource;
+    result = this._executionResource.post(runURL, this.codeToExecute(), SYNCHRONOUS);
+    return result;
   },
   
-  executeCode: function() { // Overloader in teacher slideshow (to remove)
-    this.executeCodeAt(this._runResource);
+  _displayRunResult: function() {
+    this._standardOutput.clear();
+    this._standardOutput.updateWith(this._runResult());
+  },
+
+  _save: function(type) { 
+    this._saveResource.post(this._saveURL + "/" + this._codeHelpers._currentIndex, 
+    JSON.stringify({
+      "type": type,
+      "code": this.codeToExecute(),
+      "code_output": this._standardOutput.content()
+    }), SYNCHRONOUS);
+  },
+
+  getAndRun: function() {
+    this._serverExecutionContext.updateWithResource(this._getAndRunResource); 
+    if (this._editor.updateWithServerExecutionContext()) { 
+      this.run();
+    }
+  },  
+
+  runAndSend: function() {
+    if (this.codeToExecute() == '' ) return;    
+    this._displayRunResult();
+    this._save("send");
+  },  
+
+  run: function() { // Overloader in teacher slideshow (try to remove from it)
+    if (this.codeToExecute() == '' ) return;
+    this._displayRunResult();
+    this._save("run");
   },
 
   _update: function() {
     this._codeHelpers.update();
-    this._serverExecutionContext.updateWithResource(this._updateResource);    
-    if (this._serverExecutionContext.isEmpty()) {
-      if (this._editor.updateWithLocalExecutionContext()) { this.executeCodeAt(this._runResource); }
-    } else {
-      if (this._editor.updateWithServerExecutionContext()) { this.executeCodeAt(this._runResource); }
-    }
+    this._serverExecutionContext.updateWithResource(this._updateResource); 
+    if (this._editor.update()) { this.run(); }
   },
   
 };

@@ -17,12 +17,8 @@ for(key in PollSlide.prototype) {
 // ----------------------------------
 var TeacherCodeSlide = function(node, slideshow) {
   CodeSlide.call(this, node, slideshow);
-
-  this._runResource = '/code_run_result';
-  this._sendResource = '/code_send_result';
-  this._getAndRunResource = '';
-  this._updateResource = '/code_last_execution';
   
+  this._getAndRunResource = '';
   this._attendeesLastSendResource = '/code_attendees_last_send';
 };
 
@@ -31,7 +27,7 @@ TeacherCodeSlide.prototype = {
   _keyHandling: function(e) {
     
     this._slideshow._preventDefaultKeys(e);    
-    
+
     if ( e.altKey ) {
       CodeSlide.prototype._bindKeys.call(this, e);
       if (e.which == N) { this._node.querySelector('#get_last_send').click();}
@@ -48,15 +44,19 @@ TeacherCodeSlide.prototype = {
     );
   },
   
-  executeCode: function() {
-    CodeSlide.prototype.executeCode.call(this);
+  run: function() {
+    CodeSlide.prototype.run.call(this);
     this._editor._authorBar.refreshSessionUserName();
   }, 
   
   _updateEditorWithLastSendAndExecute: function() {
     this._serverExecutionContext.updateWithResource(this._attendeesLastSendResource); 
     if (this._serverExecutionContext.isEmpty()) return;
-    if (this._editor.updateWithServerExecutionContext()) { this.executeCodeAt(this._sendResource); }
+    if (this._editor.updateWithServerExecutionContext()) { 
+      this.runAndSend(); 
+      this._editor._authorBar.updateAuthorNameWith(this._serverExecutionContext.author);   
+      this._editor._authorBar.updateLastSendAttendeeNameWith('');
+    }
   },  
   
  _updateLastSendAttendeeName: function(slide_index) {
