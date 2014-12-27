@@ -277,8 +277,9 @@ var CodeSlide = function(node, slideshow) {
   this._standardOutput = new StandardOutput(this._node.querySelector('#code_output'));
   this._codeHelpers = new CodeHelpers(queryAll(node, '.code_helper'), this);   
   
-  this._runResource = 'code_run_result';
+  // this._runResource = 'code_run_result';
   // this._runResource = 'http://localhost:5000';
+  this._runResource = 'http://ol-java-test.herokuapp.com';
   this._getAndRunResource = '/code_get_last_send_to_blackboard'    
   this._updateResource = '/code_last_execution'
   this._saveURL = "/code_save_execution_context";
@@ -352,8 +353,7 @@ CodeSlide.prototype = {
 
   _runResult: function() { 
     runURL = this._runResource;
-    result = this._executionResource.post(runURL, this.codeToExecute(), SYNCHRONOUS);
-    return result;
+    return this._executionResource.post(runURL, this.codeToExecute(), SYNCHRONOUS);
   },
   
   _displayRunResult: function() {
